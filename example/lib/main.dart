@@ -99,6 +99,14 @@ class _MyAppState extends State<MyApp> {
       });
     };
 
+    _audio.onNext = (){
+      print("on next");
+    };
+
+    _audio.onPrevious = (){
+      print("on previous");
+    };
+
     _audio.onStopped = () {
       setState(() {
         _isLoaded = false;
@@ -114,6 +122,7 @@ class _MyAppState extends State<MyApp> {
         _status = "completed";
       });
     };
+
 
     _audio.onProgressChanged = (progress) {
       setState(() {

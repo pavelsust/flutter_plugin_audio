@@ -46,6 +46,8 @@ class NativeAudio {
   static const _flutterMethodOnStopped = "onStopped";
   static const _flutterMethodOnProgressChanged = "onProgressChanged";
   static const _flutterMethodOnCompleted = "onCompleted";
+  static const _flutterMethodOnNext = "onNext";
+  static const _flutterMethodOnPrevious = "onPrevious";
 
   Function(Duration totalDuration, bool startedAutomatically) onLoaded;
   Function() onResumed;
@@ -53,6 +55,8 @@ class NativeAudio {
   Function() onStopped;
   Function onCompleted;
   Function(Duration) onProgressChanged;
+  Function() onNext;
+  Function() onPrevious;
 
   NativeAudio();
 
@@ -155,6 +159,14 @@ class NativeAudio {
 
         case _flutterMethodOnCompleted:
           if (onCompleted != null) onCompleted();
+          break;
+
+        case _flutterMethodOnNext:
+          if (onStopped != null) onNext();
+          break;
+
+        case _flutterMethodOnPrevious:
+          if (onStopped != null) onPrevious();
           break;
 
         case _flutterMethodOnProgressChanged:

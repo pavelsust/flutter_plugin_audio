@@ -35,8 +35,6 @@ import com.bumptech.glide.request.target.SimpleTarget
 import com.bumptech.glide.request.transition.Transition
 import com.danielgauci.native_audio.BluetoothManager
 import com.danielgauci.native_audio.HeadsetManager
-import com.flutter_plugin_audio.AudioPlayer
-import com.flutter_plugin_audio.R
 
 class AudioService : Service() {
 
@@ -62,6 +60,8 @@ class AudioService : Service() {
     var onPaused: (() -> Unit)? = null
     var onStopped: (() -> Unit)? = null
     var onCompleted: (() -> Unit)? = null
+    var onNext: (() -> Unit)? = null
+    var onPrevious: (() -> Unit)? = null
 
 
 
@@ -118,17 +118,20 @@ class AudioService : Service() {
 
                 override fun onSkipToNext() {
                     super.onSkipToNext()
-                    skipForward()
+                    //skipForward()
+                    onNext?.invoke()
                 }
 
                 override fun onSkipToPrevious() {
                     super.onSkipToPrevious()
-                    skipBackward()
+                    //skipBackward()
+                    onPrevious?.invoke()
                 }
 
                 override fun onFastForward() {
                     super.onFastForward()
-                    skipForward()
+                    //skipForward()
+                    onNext?.invoke()
                 }
 
                 override fun onRewind() {
@@ -314,9 +317,22 @@ class AudioService : Service() {
         audioPlayer.seekTo(timeInMillis)
     }
 
+
+    /**
+     *
+     *  Should be skip forward call
+     */
+
+
     fun skipForward() {
         seekTo(currentPositionInMillis + SKIP_FORWARD_TIME_MILLIS.toInt())
     }
+
+    /**
+     *  Should be skip backward call
+     *
+     */
+
 
     fun skipBackward() {
         // If trying to skip backward more than the start of the audio, manually seek to 0s to
@@ -399,7 +415,7 @@ class AudioService : Service() {
 
             // Add rewind action
             val rewindAction = NotificationCompat.Action.Builder(
-                    R.drawable.ic_rewind,
+                    R.drawable.ic_previous,
                     "Rewind",
                     MediaButtonReceiver.buildMediaButtonPendingIntent(this@AudioService, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
             ).build()
@@ -415,7 +431,7 @@ class AudioService : Service() {
 
             // Add fast forward action
             val forwardAction = NotificationCompat.Action.Builder(
-                    R.drawable.ic_forward,
+                    R.drawable.ic_next,
                     "Fast Forward",
                     MediaButtonReceiver.buildMediaButtonPendingIntent(this@AudioService, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
             ).build()

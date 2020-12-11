@@ -61,6 +61,8 @@ class FlutterPluginAudioPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
     private const val FLUTTER_METHOD_ON_PAUSED = "onPaused"
     private const val FLUTTER_METHOD_ON_STOPPED = "onStopped"
     private const val FLUTTER_METHOD_ON_COMPLETED = "onCompleted"
+    private const val FLUTTER_METHOD_ON_NEXT = "onNext"
+    private const val FLUTTER_METHOD_ON_PREVIOUS = "onPrevious"
 
     private var audioService: AudioService? = null
 
@@ -268,6 +270,22 @@ class FlutterPluginAudioPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
       onCompleted = {
         try {
           channel.invokeMethod(FLUTTER_METHOD_ON_COMPLETED, null)
+        } catch (e: Exception) {
+          Log.e(this::class.java.simpleName, e.message, e)
+        }
+      }
+
+      onNext ={
+        try {
+          channel.invokeMethod(FLUTTER_METHOD_ON_NEXT, null)
+        } catch (e: Exception) {
+          Log.e(this::class.java.simpleName, e.message, e)
+        }
+      }
+
+      onPrevious = {
+        try {
+          channel.invokeMethod(FLUTTER_METHOD_ON_PREVIOUS, null)
         } catch (e: Exception) {
           Log.e(this::class.java.simpleName, e.message, e)
         }
