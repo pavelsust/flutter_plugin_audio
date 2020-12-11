@@ -63,13 +63,6 @@ class AudioService : Service() {
     var onNext: (() -> Unit)? = null
     var onPrevious: (() -> Unit)? = null
 
-
-
-    fun init(application: Application){
-
-    }
-
-
     private var currentPlaybackState = PlaybackStateCompat.STATE_STOPPED
     private var oldPlaybackState: Int = Int.MIN_VALUE
     private var currentPositionInMillis = 0L
@@ -249,7 +242,7 @@ class AudioService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         audioPlayer.release()
-        cancelNotification()
+        cancelNotificaiton()
     }
 
     fun play(
@@ -302,7 +295,7 @@ class AudioService : Service() {
         currentPositionInMillis = 0
         durationInMillis = 0
 
-        cancelNotification()
+        cancelNotificaiton()
         session.isActive = false
 
         abandonFocus()
@@ -501,12 +494,13 @@ class AudioService : Service() {
         }
     }
 
-     fun cancelNotification() {
+     fun cancelNotificaiton() {
+         audioPlayer.release()
         stopForeground(true)
         notificationManager.cancel(NOTIFICATION_ID)
         isNotificationShown = false
     }
-
+    
     private fun updatePlaybackState() {
         val playbackState = playbackStateBuilder
                 .setState(currentPlaybackState, currentPositionInMillis, 0f)

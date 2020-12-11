@@ -177,6 +177,7 @@ class FlutterPluginAudioPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
 
         override fun onActivityDestroyed(activity: Activity) {
           Log.d("NATIVE_PLUGIN", "onActivityDestroyed")
+          audioService?.stop()
         }
 
       })
