@@ -53,7 +53,7 @@ class NativeAudio {
   Function() onResumed;
   Function() onPaused;
   Function() onStopped;
-  Function onCompleted;
+  Function() onCompleted;
   Function(Duration) onProgressChanged;
   Function() onNext;
   Function() onPrevious;

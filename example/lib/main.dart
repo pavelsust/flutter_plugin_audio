@@ -120,6 +120,7 @@ class _MyAppState extends State<MyApp> {
         _isLoaded = false;
         _isPlaying = false;
         _status = "completed";
+        print("on completed");
       });
     };
 
