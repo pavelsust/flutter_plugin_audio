@@ -31,9 +31,7 @@ class FlutterPluginAudioPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
 
 
   companion object {
-
-    private const val CHANNEL = "com.danielgauci.native_audio"
-
+    
     private const val NATIVE_METHOD_PLAY = "play"
     private const val NATIVE_METHOD_PLAY_ARG_URL = "url"
     private const val NATIVE_METHOD_PLAY_ARG_TITLE = "title"
@@ -139,6 +137,11 @@ class FlutterPluginAudioPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
     channel.setMethodCallHandler(null)
   }
 
+  /**
+   *   Flutter attached
+   *
+   */
+
   override fun onAttachedToActivity(binding: ActivityPluginBinding) {
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
       binding.activity.registerActivityLifecycleCallbacks(object :Application.ActivityLifecycleCallbacks{
@@ -152,10 +155,6 @@ class FlutterPluginAudioPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
           val serviceIntent = Intent(context, AudioService::class.java)
           if (!context.isServiceRunning(AudioService::class.java)) context.startService(serviceIntent)
           serviceConnection?.let { context.bindService(serviceIntent, it, Context.BIND_AUTO_CREATE) }
-
-          Toast.makeText(activity.applicationContext,
-                  "Value from service ",
-                  Toast.LENGTH_LONG).show();
 
         }
 
