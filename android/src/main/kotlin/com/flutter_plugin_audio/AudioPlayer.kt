@@ -81,10 +81,10 @@ class AudioPlayer(
     }
 
     fun stop(release: Boolean = true) {
-        mediaPlayer!!.apply {
+        mediaPlayer?.apply {
             this.stop()
             this.reset()
-            onStopped!!.invoke()
+            onStopped?.invoke()
         }
 
         if (release) release()
