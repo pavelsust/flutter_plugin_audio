@@ -4,16 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// class FlutterPluginAudio {
-//   static const MethodChannel _channel = const MethodChannel('flutter_plugin_audio');
-//
-//   static Future<String> get platformVersion async {
-//     final String version = await _channel.invokeMethod('getPlatformVersion');
-//     return version;
-//   }
-// }
-
-
 class NativeAudio {
   static const _channel = const MethodChannel('flutter_plugin_audio');
 
@@ -49,25 +39,25 @@ class NativeAudio {
   static const _flutterMethodOnNext = "onNext";
   static const _flutterMethodOnPrevious = "onPrevious";
 
-  Function(Duration totalDuration, bool startedAutomatically) onLoaded;
-  Function() onResumed;
-  Function() onPaused;
-  Function() onStopped;
-  Function() onCompleted;
-  Function(Duration) onProgressChanged;
-  Function() onNext;
-  Function() onPrevious;
+  late Function(Duration totalDuration, bool startedAutomatically) onLoaded;
+  late Function() onResumed;
+  late Function() onPaused;
+  late Function() onStopped;
+  late Function() onCompleted;
+  late Function(Duration) onProgressChanged;
+  late Function() onNext;
+  late Function() onPrevious;
 
   NativeAudio();
 
   void play(
       String url, {
-        String title,
-        String artist,
-        String album,
-        String imageUrl,
+        String? title,
+        String? artist,
+        String? album,
+        String? imageUrl,
         bool startAutomatically = true,
-        Duration startFrom,
+        Duration? startFrom,
       }) {
     _registerMethodCallHandler();
     _invokeNativeMethod(
@@ -115,8 +105,8 @@ class NativeAudio {
   }
 
   void setSkipTime({
-    @required Duration forwardTime,
-    @required Duration backwardTime,
+    required Duration forwardTime,
+    required Duration backwardTime,
   }) {
     _invokeNativeMethod(
       _nativeMethodSetSkipTime,
@@ -131,9 +121,8 @@ class NativeAudio {
     _invokeNativeMethod(_nativeMethodRelease);
   }
 
-  void _registerMethodCallHandler() {
-    // Listen to method calls from native
-    _channel.setMethodCallHandler((methodCall) {
+  void _registerMethodCallHandler(){
+    _channel.setMethodCallHandler((methodCall)async{
       switch (methodCall.method) {
         case _flutterMethodOnLoaded:
           final int durationInMillis = methodCall
@@ -146,46 +135,45 @@ class NativeAudio {
           break;
 
         case _flutterMethodOnResumed:
-          if (onResumed != null) onResumed();
+          onResumed();
           break;
 
         case _flutterMethodOnPaused:
-          if (onPaused != null) onPaused();
+          onPaused();
           break;
 
         case _flutterMethodOnStopped:
-          if (onStopped != null) onStopped();
+          onStopped();
           break;
 
         case _flutterMethodOnCompleted:
-          if (onCompleted != null) onCompleted();
+          onCompleted();
           break;
 
         case _flutterMethodOnNext:
-          if (onStopped != null) onNext();
+          onNext();
           break;
 
         case _flutterMethodOnPrevious:
-          if (onStopped != null) onPrevious();
+          onPrevious();
           break;
 
         case _flutterMethodOnProgressChanged:
           int currentTimeInMillis = methodCall.arguments;
-          if (onProgressChanged != null)
-            onProgressChanged(Duration(milliseconds: currentTimeInMillis));
+          onProgressChanged(Duration(milliseconds: currentTimeInMillis));
           break;
       }
 
-      return;
     });
+
   }
 
   Future _invokeNativeMethod(String method,
-      {Map<String, dynamic> arguments}) async {
+      {Map<String, dynamic>? arguments}) async {
     try {
       await _channel.invokeMethod(method, arguments);
     } on PlatformException catch (e) {
-      print("Failed to call native method: " + e.message);
+      print("Failed to call native method: " + e.message!);
     }
   }
 }
