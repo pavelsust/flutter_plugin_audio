@@ -16,14 +16,14 @@ class AudioPlayer(
 
     private var mediaPlayer: MediaPlayer? = null
     private var progressCallbackHandler: Handler? = null
-    private var progressCallback: Runnable? = null
+    private lateinit var progressCallback: Runnable
     private var currentProgress = 0L
     private var isLoaded = false
 
     fun play(url: String, startAutomatically: Boolean = true, startFromMillis: Long = 0L) {
         if (mediaPlayer == null) mediaPlayer = MediaPlayer()
 
-        mediaPlayer?.apply {
+        mediaPlayer!!.apply {
             // Stop audio if already playing
             if (isPlaying) stop()
 
@@ -33,7 +33,7 @@ class AudioPlayer(
                 isLoaded = true
 
                 // Notify callback
-                onLoaded?.invoke(duration.toLong(), startAutomatically)
+                onLoaded!!.invoke(duration.toLong(), startAutomatically)
 
                 // Seek if start time is not 0
                 if (startFromMillis > 0) seekTo(startFromMillis)
@@ -44,7 +44,7 @@ class AudioPlayer(
 
             setOnCompletionListener {
                 // Notify callback
-                onCompleted?.invoke()
+                onCompleted!!.invoke()
 
                 // Update flags
                 isLoaded = false
@@ -59,7 +59,7 @@ class AudioPlayer(
     }
 
     fun resume(notifyListener: Boolean = true) {
-        mediaPlayer?.apply {
+        mediaPlayer!!.apply {
             if (isLoaded && !isPlaying) {
                 start()
                 if (notifyListener) onResumed?.invoke()
@@ -70,7 +70,7 @@ class AudioPlayer(
     }
 
     fun pause() {
-        mediaPlayer?.apply {
+        mediaPlayer!!.apply {
             if (isPlaying) {
                 pause()
                 onPaused?.invoke()
@@ -81,17 +81,17 @@ class AudioPlayer(
     }
 
     fun stop(release: Boolean = true) {
-        mediaPlayer?.apply {
+        mediaPlayer!!.apply {
             this.stop()
             this.reset()
-            onStopped?.invoke()
+            onStopped!!.invoke()
         }
 
         if (release) release()
     }
 
     fun seekTo(timeInMillis: Long) {
-        mediaPlayer?.apply {
+        mediaPlayer!!.apply {
             if (isLoaded) {
                 // Manually notify onProgressChanged since it is not called automatically if player is paused
                 onProgressChanged?.invoke(timeInMillis)
@@ -105,12 +105,12 @@ class AudioPlayer(
         stop(release = false)
         stopListeningForProgress()
 
-        mediaPlayer?.release()
+        mediaPlayer!!.release()
         mediaPlayer = null
     }
 
     private fun loadAudio(url: String) {
-        mediaPlayer?.apply {
+        mediaPlayer!!.apply {
             setOnErrorListener { mp, what, extra ->
                 Log.d(this::class.java.simpleName, "OnError - Error code: $what Extra code: $extra")
 
@@ -152,6 +152,6 @@ class AudioPlayer(
     private fun stopListeningForProgress() {
         progressCallbackHandler?.removeCallbacks(progressCallback)
         progressCallbackHandler = null
-        progressCallback = null
+        //progressCallback.
     }
 }
