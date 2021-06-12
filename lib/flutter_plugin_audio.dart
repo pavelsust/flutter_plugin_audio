@@ -39,14 +39,14 @@ class NativeAudio {
   static const _flutterMethodOnNext = "onNext";
   static const _flutterMethodOnPrevious = "onPrevious";
 
-  late Function(Duration totalDuration, bool startedAutomatically) onLoaded;
-  late Function() onResumed;
-  late Function() onPaused;
-  late Function() onStopped;
-  late Function() onCompleted;
-  late Function(Duration) onProgressChanged;
-  late Function() onNext;
-  late Function() onPrevious;
+   Function(Duration totalDuration, bool startedAutomatically)? onLoaded;
+   Function()? onResumed;
+   Function()? onPaused;
+   Function()? onStopped;
+   Function()? onCompleted;
+   Function(Duration)? onProgressChanged;
+   Function()? onNext;
+   Function()? onPrevious;
 
   NativeAudio();
 
@@ -130,37 +130,37 @@ class NativeAudio {
           final bool startedAutomatically = methodCall
               .arguments[_flutterMethodOnLoadedArgStartedAutomatically];
           if (onLoaded != null)
-            onLoaded(
+            onLoaded!(
                 Duration(milliseconds: durationInMillis), startedAutomatically);
           break;
 
         case _flutterMethodOnResumed:
-          onResumed();
+          onResumed!();
           break;
 
         case _flutterMethodOnPaused:
-          onPaused();
+          onPaused!();
           break;
 
         case _flutterMethodOnStopped:
-          onStopped();
+          onStopped!();
           break;
 
         case _flutterMethodOnCompleted:
-          onCompleted();
+          onCompleted!();
           break;
 
         case _flutterMethodOnNext:
-          onNext();
+          onNext!();
           break;
 
         case _flutterMethodOnPrevious:
-          onPrevious();
+          onPrevious!();
           break;
 
         case _flutterMethodOnProgressChanged:
           int currentTimeInMillis = methodCall.arguments;
-          onProgressChanged(Duration(milliseconds: currentTimeInMillis));
+          onProgressChanged!(Duration(milliseconds: currentTimeInMillis));
           break;
       }
 
