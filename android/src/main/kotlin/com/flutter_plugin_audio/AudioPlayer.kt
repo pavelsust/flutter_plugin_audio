@@ -104,8 +104,9 @@ class AudioPlayer(
     fun release() {
         stop(release = false)
         stopListeningForProgress()
-
-        mediaPlayer!!.release()
+        if (mediaPlayer!=null){
+            mediaPlayer!!.release()
+        }
         mediaPlayer = null
     }
 
