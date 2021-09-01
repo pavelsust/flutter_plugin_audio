@@ -105,7 +105,7 @@ class AudioPlayer(
         stop(release = false)
         stopListeningForProgress()
         if (mediaPlayer!=null){
-            //mediaPlayer!!.release()
+            mediaPlayer!!.release()
         }
         mediaPlayer = null
     }
