@@ -2,32 +2,39 @@ package com.flutter_plugin_audio
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
-import android.app.*
-import android.app.Application.ActivityLifecycleCallbacks
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.media.AudioManager
-import android.media.MediaMetadata
 import android.os.Binder
 import android.os.Build
-import android.os.Bundle
-
 import android.os.IBinder
 import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.MediaMetadataCompat.*
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION
+import android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.view.KeyEvent
-import android.view.KeyEvent.*
+import android.view.KeyEvent.ACTION_DOWN
+import android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+import android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+import android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
 import androidx.annotation.ColorInt
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
 import androidx.palette.graphics.Palette
 import com.bumptech.glide.Glide
@@ -38,22 +45,18 @@ import com.danielgauci.native_audio.HeadsetManager
 
 class AudioService : Service() {
 
-
     companion object {
         var SKIP_FORWARD_TIME_MILLIS = 30_000L
         var SKIP_BACKWARD_TIME_MILLIS = 10_000L
 
         private const val MEDIA_SESSION_TAG = "com.danielgauci.native_audio"
-
         private const val NOTIFICATION_ID = 10
 
         private const val NOTIFICATION_CHANNEL_ID = "media_playback_channel"
         private const val NOTIFICATION_CHANNEL_NAME = "Media Playback"
         private const val NOTIFICATION_CHANNEL_DESCRIPTION = "Media Playback Controls"
-
     }
 
-    // TODO: Confirm that this does not leak the activity
     var onLoaded: ((Long, Boolean) -> Unit)? = null
     var onProgressChanged: ((Long) -> Unit)? = null
     var onResumed: (() -> Unit)? = null
@@ -69,38 +72,37 @@ class AudioService : Service() {
     private var durationInMillis = 0L
     private var resumeOnAudioFocus = false
     private var isNotificationShown = false
-    private var notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+
+    private val binder by lazy { AudioServiceBinder() }
+
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     private var metadata = MediaMetadataCompat.Builder()
 
-    private val binder by lazy { AudioServiceBinder() }
-     val session by lazy {
+    private val session by lazy {
         MediaSessionCompat(this, MEDIA_SESSION_TAG).apply {
             setCallback(object : MediaSessionCompat.Callback() {
-                // onStop is intentionally not overridden. This callback is usually called when a
-                // bluetooth device is switched off, in which case we want to pause audio, rather
-                // than stop it. As such, there is no need to override it and manually call stop().
-
                 override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
-                    // Handle play/pause events manually since onPlay/onPause are not always called on bluetooth devices
-                    val keyEvent = mediaButtonEvent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    val keyEvent =
+                        mediaButtonEvent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+
                     if (keyEvent?.action == ACTION_DOWN) {
                         when (keyEvent.keyCode) {
                             KEYCODE_MEDIA_PLAY -> {
                                 resume()
                                 return true
                             }
+
                             KEYCODE_MEDIA_PAUSE -> {
                                 pause()
                                 return true
                             }
+
                             KEYCODE_MEDIA_PLAY_PAUSE -> {
                                 if (isPlaying()) pause() else resume()
                                 return true
                             }
                         }
                     }
-
                     return super.onMediaButtonEvent(mediaButtonEvent)
                 }
 
@@ -111,19 +113,16 @@ class AudioService : Service() {
 
                 override fun onSkipToNext() {
                     super.onSkipToNext()
-                    //skipForward()
                     onNext?.invoke()
                 }
 
                 override fun onSkipToPrevious() {
                     super.onSkipToPrevious()
-                    //skipBackward()
                     onPrevious?.invoke()
                 }
 
                 override fun onFastForward() {
                     super.onFastForward()
-                    //skipForward()
                     onNext?.invoke()
                 }
 
@@ -139,102 +138,104 @@ class AudioService : Service() {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-     val audioPlayer by lazy {
-        AudioPlayer(
-                onLoaded = { totalDurationInMillis, startedAutomatically ->
-                    durationInMillis = totalDurationInMillis
-                    onLoaded?.invoke(totalDurationInMillis, startedAutomatically)
+    private var notificationBuilder by lazy {
+        NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+    }
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        metadata.putLong(METADATA_KEY_DURATION, durationInMillis)
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        session.setMetadata(metadata.build())
-                    }
-                },
-                onProgressChanged = {
-                    currentPositionInMillis = it
-                    onProgressChanged?.invoke(it)
-                    updatePlaybackState()
-                },
-                onResumed = onResumed,
-                onPaused = onPaused,
-                onStopped = onStopped,
-                onCompleted = {
-                    stop()
-                    onCompleted?.invoke()
+    val audioPlayer by lazy {
+        AudioPlayer(
+            onLoaded = { totalDurationInMillis, startedAutomatically ->
+                durationInMillis = totalDurationInMillis
+                onLoaded?.invoke(totalDurationInMillis, startedAutomatically)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    metadata.putLong(METADATA_KEY_DURATION, durationInMillis)
+                    session.setMetadata(metadata.build())
                 }
+            },
+            onProgressChanged = {
+                currentPositionInMillis = it
+                onProgressChanged?.invoke(it)
+                updatePlaybackState()
+            },
+            onResumed = onResumed,
+            onPaused = onPaused,
+            onStopped = onStopped,
+            onCompleted = {
+                stop()
+                onCompleted?.invoke()
+            }
         )
     }
 
     private val playbackStateBuilder by lazy {
         PlaybackStateCompat.Builder().setActions(
-                PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                        PlaybackStateCompat.ACTION_FAST_FORWARD or
-                        PlaybackStateCompat.ACTION_REWIND or
-                        PlaybackStateCompat.ACTION_STOP or
-                        PlaybackStateCompat.ACTION_SEEK_TO
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackStateCompat.ACTION_FAST_FORWARD or
+                    PlaybackStateCompat.ACTION_REWIND or
+                    PlaybackStateCompat.ACTION_STOP or
+                    PlaybackStateCompat.ACTION_SEEK_TO
         )
     }
 
     private val audioFocusRequest by lazy {
         AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
-                .setOnAudioFocusChangeListener { audioFocus ->
-                    when (audioFocus) {
-                        AudioManager.AUDIOFOCUS_GAIN -> {
-                            if (resumeOnAudioFocus && !isPlaying()) {
-                                resume()
-                                resumeOnAudioFocus = false
-                            } else if (isPlaying()) {
-                                // TODO: Set volume to full
-                            }
-                        }
-                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                            // TODO: Set volume to duck
-                        }
-                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                            if (isPlaying()) {
-                                resumeOnAudioFocus = true
-                                pause()
-                            }
-                        }
-                        AudioManager.AUDIOFOCUS_LOSS -> {
+            .setOnAudioFocusChangeListener { audioFocus ->
+                when (audioFocus) {
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        if (resumeOnAudioFocus && !isPlaying()) {
+                            resume()
                             resumeOnAudioFocus = false
+                        }
+                    }
+
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    }
+
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                        if (isPlaying()) {
+                            resumeOnAudioFocus = true
                             pause()
                         }
                     }
+
+                    AudioManager.AUDIOFOCUS_LOSS -> {
+                        resumeOnAudioFocus = false
+                        pause()
+                    }
                 }
-                .build()
+            }
+            .build()
     }
 
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     private val headsetManager by lazy { HeadsetManager() }
     private val bluetoothManager by lazy { BluetoothManager() }
 
-    override fun onBind(intent: Intent?): IBinder? {
+    override fun onBind(intent: Intent?): IBinder {
         return binder
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-
-
         Log.d("NATIVE_PLUGIN", "onStartCommand")
 
         MediaButtonReceiver.handleIntent(session, intent)
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             headsetManager.registerHeadsetPlugReceiver(
-                    this,
-                    onConnected = {},
-                    onDisconnected = { pause() })
+                this,
+                onConnected = {},
+                onDisconnected = { pause() }
+            )
         }
 
         bluetoothManager.registerBluetoothReceiver(
-                this,
-                onConnected = {},
-                onDisconnected = { pause() })
+            this,
+            onConnected = {},
+            onDisconnected = { pause() }
+        )
 
         return START_NOT_STICKY
     }
@@ -242,17 +243,17 @@ class AudioService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         audioPlayer.release()
-        cancelNotificaiton()
+        cancelNotification()
     }
 
     fun play(
-            url: String,
-            title: String? = null,
-            artist: String? = null,
-            album: String? = null,
-            imageUrl: String? = null,
-            startAutomatically: Boolean = true,
-            startFromMillis: Long = 0L
+        url: String,
+        title: String? = null,
+        artist: String? = null,
+        album: String? = null,
+        imageUrl: String? = null,
+        startAutomatically: Boolean = true,
+        startFromMillis: Long = 0L
     ) {
         requestFocus()
 
@@ -263,73 +264,51 @@ class AudioService : Service() {
         updatePlaybackState()
 
         showNotification(
-                title = title ?: "",
-                artist = artist ?: "",
-                album = album ?: "",
-                imageUrl = imageUrl ?: ""
+            title = title ?: "",
+            artist = artist ?: "",
+            album = album ?: "",
+            imageUrl = imageUrl ?: ""
         )
     }
 
     fun resume() {
         requestFocus()
-
         audioPlayer.resume()
-
         currentPlaybackState = PlaybackStateCompat.STATE_PLAYING
         updatePlaybackState()
     }
 
     fun pause() {
         audioPlayer.pause()
-
         currentPlaybackState = PlaybackStateCompat.STATE_PAUSED
         updatePlaybackState()
 
-        if (!resumeOnAudioFocus) abandonFocus()
+        if (!resumeOnAudioFocus) {
+            abandonFocus()
+        }
     }
 
     fun stop() {
         audioPlayer.stop()
-
         currentPlaybackState = PlaybackStateCompat.STATE_STOPPED
-        currentPositionInMillis = 0
-        durationInMillis = 0
+        currentPositionInMillis = 0L
+        durationInMillis = 0L
 
-        cancelNotificaiton()
+        cancelNotification()
         session.isActive = false
-
         abandonFocus()
-
         stopSelf()
-
-
-
     }
 
     fun seekTo(timeInMillis: Long) {
         audioPlayer.seekTo(timeInMillis)
     }
 
-
-    /**
-     *
-     *  Should be skip forward call
-     */
-
-
     fun skipForward() {
-        seekTo(currentPositionInMillis + SKIP_FORWARD_TIME_MILLIS.toInt())
+        seekTo(currentPositionInMillis + SKIP_FORWARD_TIME_MILLIS)
     }
 
-    /**
-     *  Should be skip backward call
-     *
-     */
-
-
     fun skipBackward() {
-        // If trying to skip backward more than the start of the audio, manually seek to 0s to
-        // avoid receiving a progress update with a negative time
         val seekTime = currentPositionInMillis - SKIP_BACKWARD_TIME_MILLIS
         seekTo(if (seekTime < 0) 0 else seekTime)
     }
@@ -338,208 +317,235 @@ class AudioService : Service() {
         AudioManagerCompat.requestAudioFocus(audioManager, audioFocusRequest)
     }
 
-     fun abandonFocus() {
+    fun abandonFocus() {
         AudioManagerCompat.abandonAudioFocusRequest(audioManager, audioFocusRequest)
     }
 
     @TargetApi(26)
     private fun createNotificationChannel() {
-        notificationManager.createNotificationChannel(NotificationChannel(
+        notificationManager.createNotificationChannel(
+            NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 NOTIFICATION_CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = NOTIFICATION_CHANNEL_DESCRIPTION
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            setShowBadge(false)
-        })
+            ).apply {
+                description = NOTIFICATION_CHANNEL_DESCRIPTION
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setShowBadge(false)
+            }
+        )
+    }
+
+    private fun activityPendingIntentFlags(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     private fun updateNotificationBuilder(
-            title: String,
-            artist: String,
-            album: String,
-            @ColorInt notificationColor: Int? = null,
-            image: Bitmap? = null
+        title: String,
+        artist: String,
+        album: String,
+        @ColorInt notificationColor: Int? = null,
+        image: Bitmap? = null
     ) {
         metadata.putString(METADATA_KEY_TITLE, title)
-                .putString(METADATA_KEY_ARTIST, artist)
-                .putBitmap(METADATA_KEY_ALBUM_ART, image)
+            .putString(METADATA_KEY_ARTIST, artist)
+            .putBitmap(METADATA_KEY_ALBUM_ART, image)
 
         session.setMetadata(metadata.build())
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) createNotificationChannel()
-        val intent = packageManager.getLaunchIntentForPackage(packageName)
-        val contentIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
-        val stopIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_STOP)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            createNotificationChannel()
+        }
 
-        val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
-                .setMediaSession(session.sessionToken)
-                .setShowActionsInCompactView(0, 1, 2)
-                .setCancelButtonIntent(stopIntent)
-                .setShowCancelButton(true)
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val contentIntent = launchIntent?.let {
+            PendingIntent.getActivity(
+                this,
+                0,
+                it,
+                activityPendingIntentFlags()
+            )
+        }
+
+        val stopIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(
+            this,
+            PlaybackStateCompat.ACTION_STOP
+        )
+
+        val mediaStyle = MediaStyle()
+            .setMediaSession(session.sessionToken)
+            .setShowActionsInCompactView(0, 1, 2)
+            .setCancelButtonIntent(stopIntent)
+            .setShowCancelButton(true)
 
         notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-                .setStyle(mediaStyle)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setOnlyAlertOnce(true)
-                .setOngoing(true)
-                .setSmallIcon(R.drawable.native_audio_notification_icon)
-                .setContentIntent(contentIntent)
-                .setDeleteIntent(stopIntent)
-                .setContentTitle(title)
-                .setContentText(album)
-                .setSubText(artist)
+            .setStyle(mediaStyle)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setSmallIcon(R.drawable.native_audio_notification_icon)
+            .setDeleteIntent(stopIntent)
+            .setContentTitle(title)
+            .setContentText(album)
+            .setSubText(artist)
 
-        notificationBuilder.apply {
-            if (image != null) setLargeIcon(image)
-            if (notificationColor != null) color = notificationColor
-
-            // Add play/pause action
-            setNotificationButtons(this)
+        if (contentIntent != null) {
+            notificationBuilder.setContentIntent(contentIntent)
         }
+
+        if (image != null) {
+            notificationBuilder.setLargeIcon(image)
+        }
+
+        if (notificationColor != null) {
+            notificationBuilder.color = notificationColor
+        }
+
+        setNotificationButtons(notificationBuilder, isPlaying())
     }
 
     @SuppressLint("RestrictedApi")
-    private fun setNotificationButtons(builder: NotificationCompat.Builder, isPlaying: Boolean = true) {
-        builder.apply {
-            mActions.clear()
+    private fun setNotificationButtons(
+        builder: NotificationCompat.Builder,
+        isPlaying: Boolean = true
+    ) {
+        builder.mActions.clear()
 
-            // Add rewind action
-            val rewindAction = NotificationCompat.Action.Builder(
-                    R.drawable.ic_previous,
-                    "Rewind",
-                    MediaButtonReceiver.buildMediaButtonPendingIntent(this@AudioService, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
-            ).build()
-            addAction(rewindAction)
+        val rewindAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_previous,
+            "Rewind",
+            MediaButtonReceiver.buildMediaButtonPendingIntent(
+                this,
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+            )
+        ).build()
 
-            // Add ic_play/ic_pause action
-            val playPauseAction = NotificationCompat.Action.Builder(
-                    if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
-                    if (isPlaying) "Pause" else "Play",
-                    MediaButtonReceiver.buildMediaButtonPendingIntent(this@AudioService, PlaybackStateCompat.ACTION_PLAY_PAUSE)
-            ).build()
-            addAction(playPauseAction)
+        val playPauseAction = NotificationCompat.Action.Builder(
+            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+            if (isPlaying) "Pause" else "Play",
+            MediaButtonReceiver.buildMediaButtonPendingIntent(
+                this,
+                PlaybackStateCompat.ACTION_PLAY_PAUSE
+            )
+        ).build()
 
-            // Add fast forward action
-            val forwardAction = NotificationCompat.Action.Builder(
-                    R.drawable.ic_next,
-                    "Fast Forward",
-                    MediaButtonReceiver.buildMediaButtonPendingIntent(this@AudioService, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
-            ).build()
-            addAction(forwardAction)
-        }
+        val forwardAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_next,
+            "Fast Forward",
+            MediaButtonReceiver.buildMediaButtonPendingIntent(
+                this,
+                PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+            )
+        ).build()
+
+        builder.addAction(rewindAction)
+        builder.addAction(playPauseAction)
+        builder.addAction(forwardAction)
     }
 
-    private fun showNotification(title: String, artist: String, album: String, imageUrl: String? = null) {
+    private fun showNotification(
+        title: String,
+        artist: String,
+        album: String,
+        imageUrl: String? = null
+    ) {
         if (imageUrl.isNullOrBlank()) {
-            // No image is set, show notification
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 updateNotificationBuilder(title, artist, album)
             }
             startForeground(NOTIFICATION_ID, notificationBuilder.build())
             isNotificationShown = true
-        } else {
-            // Get image show notification
-            Glide.with(this)
-                    .asBitmap()
-                    .load(imageUrl)
-                    .into(object : SimpleTarget<Bitmap>() {
-                        override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                            Palette.from(resource).generate { palette ->
-                                palette?.let {
-                                    // Palette generated, show notification with bitmap and palette
-                                    val color = it.getVibrantColor(Color.WHITE)
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                        updateNotificationBuilder(
-                                                title = title,
-                                                artist = artist,
-                                                album = album,
-                                                notificationColor = color,
-                                                image = resource
-                                        )
-                                    }
-
-                                    startForeground(NOTIFICATION_ID, notificationBuilder.build())
-                                    isNotificationShown = true
-                                } ?: run {
-                                    // Failed to generate palette, show notification with bitmap
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                        updateNotificationBuilder(
-                                                title = title,
-                                                artist = artist,
-                                                album = album,
-                                                image = resource
-                                        )
-                                    }
-
-                                    startForeground(NOTIFICATION_ID, notificationBuilder.build())
-                                    isNotificationShown = true
-                                }
-                            }
-                        }
-
-                        override fun onLoadFailed(errorDrawable: Drawable?) {
-                            super.onLoadFailed(errorDrawable)
-
-                            // Failed to load image, show notification
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                updateNotificationBuilder(title, artist, album)
-                            }
-                            startForeground(NOTIFICATION_ID, notificationBuilder.build())
-                            isNotificationShown = true
-                        }
-                    })
+            return
         }
+
+        Glide.with(this)
+            .asBitmap()
+            .load(imageUrl)
+            .into(object : SimpleTarget<Bitmap>() {
+                override fun onResourceReady(
+                    resource: Bitmap,
+                    transition: Transition<in Bitmap>?
+                ) {
+                    Palette.from(resource).generate { palette ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            if (palette != null) {
+                                val color = palette.getVibrantColor(Color.WHITE)
+                                updateNotificationBuilder(
+                                    title = title,
+                                    artist = artist,
+                                    album = album,
+                                    notificationColor = color,
+                                    image = resource
+                                )
+                            } else {
+                                updateNotificationBuilder(
+                                    title = title,
+                                    artist = artist,
+                                    album = album,
+                                    image = resource
+                                )
+                            }
+                        }
+
+                        startForeground(NOTIFICATION_ID, notificationBuilder.build())
+                        isNotificationShown = true
+                    }
+                }
+
+                override fun onLoadFailed(errorDrawable: Drawable?) {
+                    super.onLoadFailed(errorDrawable)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        updateNotificationBuilder(title, artist, album)
+                    }
+                    startForeground(NOTIFICATION_ID, notificationBuilder.build())
+                    isNotificationShown = true
+                }
+            })
     }
 
-     fun cancelNotificaiton() {
-         audioPlayer.release()
+    fun cancelNotification() {
+        audioPlayer.release()
         stopForeground(true)
         notificationManager.cancel(NOTIFICATION_ID)
         isNotificationShown = false
     }
-    
+
     private fun updatePlaybackState() {
         val playbackState = playbackStateBuilder
-                .setState(currentPlaybackState, currentPositionInMillis, 0f)
-                .build()
+            .setState(currentPlaybackState, currentPositionInMillis, 0f)
+            .build()
 
-        // Update session
         session.setPlaybackState(playbackState)
 
-        // Try to update notification
         if (isNotificationShown) {
             val stateChanged = currentPlaybackState != oldPlaybackState
 
-            // Update buttons based on current state
             setNotificationButtons(notificationBuilder, isPlaying())
-
-            // Allow notification to be dismissed if not playing
             notificationBuilder.setOngoing(isPlaying())
 
             if (isPlaying() && stateChanged) {
-                // Update notification and ensure that notification is in foreground as it could have been stopped before
                 startForeground(NOTIFICATION_ID, notificationBuilder.build())
             } else if (isPlaying()) {
-                // Notification was already in foreground, update with the latest information
                 notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
             } else {
-                // Allow notification to be dismissed if not playing by changing the service to a non-foreground service
                 stopForeground(false)
                 notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
             }
         }
 
-        // Update playback state
         oldPlaybackState = currentPlaybackState
     }
 
-    private fun isPlaying() = currentPlaybackState == PlaybackStateCompat.STATE_PLAYING
+    private fun isPlaying(): Boolean {
+        return currentPlaybackState == PlaybackStateCompat.STATE_PLAYING
+    }
 
     inner class AudioServiceBinder : Binder() {
-
-        fun getService() = this@AudioService
+        fun getService(): AudioService = this@AudioService
     }
 }
