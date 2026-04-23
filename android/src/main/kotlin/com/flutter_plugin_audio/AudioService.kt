@@ -51,7 +51,6 @@ class AudioService : Service() {
 
         private const val MEDIA_SESSION_TAG = "com.danielgauci.native_audio"
         private const val NOTIFICATION_ID = 10
-
         private const val NOTIFICATION_CHANNEL_ID = "media_playback_channel"
         private const val NOTIFICATION_CHANNEL_NAME = "Media Playback"
         private const val NOTIFICATION_CHANNEL_DESCRIPTION = "Media Playback Controls"
@@ -138,9 +137,8 @@ class AudioService : Service() {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    private var notificationBuilder by lazy {
+    private var notificationBuilder: NotificationCompat.Builder =
         NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-    }
 
     val audioPlayer by lazy {
         AudioPlayer(
@@ -191,8 +189,7 @@ class AudioService : Service() {
                         }
                     }
 
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                    }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {}
 
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                         if (isPlaying()) {
@@ -336,7 +333,7 @@ class AudioService : Service() {
         )
     }
 
-    private fun activityPendingIntentFlags(): Int {
+    private fun pendingIntentFlags(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         } else {
@@ -364,12 +361,7 @@ class AudioService : Service() {
 
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         val contentIntent = launchIntent?.let {
-            PendingIntent.getActivity(
-                this,
-                0,
-                it,
-                activityPendingIntentFlags()
-            )
+            PendingIntent.getActivity(this, 0, it, pendingIntentFlags())
         }
 
         val stopIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(
@@ -509,7 +501,6 @@ class AudioService : Service() {
     }
 
     fun cancelNotification() {
-        audioPlayer.release()
         stopForeground(true)
         notificationManager.cancel(NOTIFICATION_ID)
         isNotificationShown = false
