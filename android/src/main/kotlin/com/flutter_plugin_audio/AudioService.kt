@@ -9,6 +9,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
@@ -32,6 +33,7 @@ import android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
 import androidx.annotation.ColorInt
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
 import androidx.media.app.NotificationCompat.MediaStyle
@@ -241,6 +243,14 @@ class AudioService : Service() {
         super.onDestroy()
         audioPlayer.release()
         cancelNotification()
+        try {
+            headsetManager.unregisterHeadsetPlugReceiver(this)
+        } catch (_: Exception) {
+        }
+        try {
+            bluetoothManager.unregisterBluetoothReceiver(this)
+        } catch (_: Exception) {
+        }
     }
 
     fun play(
@@ -341,6 +351,19 @@ class AudioService : Service() {
         }
     }
 
+    private fun startPlaybackForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notificationBuilder.build(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notificationBuilder.build())
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     private fun updateNotificationBuilder(
         title: String,
@@ -408,36 +431,47 @@ class AudioService : Service() {
     ) {
         builder.mActions.clear()
 
-        val rewindAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_previous,
-            "Rewind",
-            MediaButtonReceiver.buildMediaButtonPendingIntent(
-                this,
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+        val rewindIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(
+            this,
+            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+        )
+        if (rewindIntent != null) {
+            builder.addAction(
+                NotificationCompat.Action.Builder(
+                    R.drawable.ic_previous,
+                    "Rewind",
+                    rewindIntent
+                ).build()
             )
-        ).build()
+        }
 
-        val playPauseAction = NotificationCompat.Action.Builder(
-            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
-            if (isPlaying) "Pause" else "Play",
-            MediaButtonReceiver.buildMediaButtonPendingIntent(
-                this,
-                PlaybackStateCompat.ACTION_PLAY_PAUSE
+        val playPauseIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(
+            this,
+            PlaybackStateCompat.ACTION_PLAY_PAUSE
+        )
+        if (playPauseIntent != null) {
+            builder.addAction(
+                NotificationCompat.Action.Builder(
+                    if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+                    if (isPlaying) "Pause" else "Play",
+                    playPauseIntent
+                ).build()
             )
-        ).build()
+        }
 
-        val forwardAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_next,
-            "Fast Forward",
-            MediaButtonReceiver.buildMediaButtonPendingIntent(
-                this,
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+        val forwardIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(
+            this,
+            PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+        )
+        if (forwardIntent != null) {
+            builder.addAction(
+                NotificationCompat.Action.Builder(
+                    R.drawable.ic_next,
+                    "Fast Forward",
+                    forwardIntent
+                ).build()
             )
-        ).build()
-
-        builder.addAction(rewindAction)
-        builder.addAction(playPauseAction)
-        builder.addAction(forwardAction)
+        }
     }
 
     private fun showNotification(
@@ -450,7 +484,7 @@ class AudioService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 updateNotificationBuilder(title, artist, album)
             }
-            startForeground(NOTIFICATION_ID, notificationBuilder.build())
+            startPlaybackForeground()
             isNotificationShown = true
             return
         }
@@ -484,7 +518,7 @@ class AudioService : Service() {
                             }
                         }
 
-                        startForeground(NOTIFICATION_ID, notificationBuilder.build())
+                        startPlaybackForeground()
                         isNotificationShown = true
                     }
                 }
@@ -494,7 +528,7 @@ class AudioService : Service() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         updateNotificationBuilder(title, artist, album)
                     }
-                    startForeground(NOTIFICATION_ID, notificationBuilder.build())
+                    startPlaybackForeground()
                     isNotificationShown = true
                 }
             })
@@ -520,7 +554,7 @@ class AudioService : Service() {
             notificationBuilder.setOngoing(isPlaying())
 
             if (isPlaying() && stateChanged) {
-                startForeground(NOTIFICATION_ID, notificationBuilder.build())
+                startPlaybackForeground()
             } else if (isPlaying()) {
                 notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build())
             } else {
